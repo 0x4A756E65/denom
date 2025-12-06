@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	denom "github.com/0x4A756E65"
+	"github.com/0x4A756E65/denom"
 )
 
 func main() {
