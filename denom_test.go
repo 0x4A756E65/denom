@@ -173,4 +173,16 @@ func TestFormatCompact(t *testing.T) {
 	if got := US().FormatCompact(small); got != "$999.00" {
 		t.Fatalf("compact small got %q, want %q", got, "$999.00")
 	}
+
+	roundUp := FromMinor(99_995_000, USD) // 999,950.00 -> should round to 1M
+	if got := US().FormatCompact(roundUp); got != "$1M" {
+		t.Fatalf("compact round-up got %q, want %q", got, "$1M")
+	}
+}
+
+func TestMajorStringMinInt64(t *testing.T) {
+	a := FromMinor(math.MinInt64, Currency{Code: "X", Symbol: "X", Scale: 0})
+	if s := a.MajorString(); s != "9223372036854775808" {
+		t.Fatalf("MajorString min int got %q", s)
+	}
 }

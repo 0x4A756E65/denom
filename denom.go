@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -381,20 +382,34 @@ func (f Formatter) FormatCompact(a Amount) string {
 		idx++
 	}
 
-	divisor := float64(pow)
-	if idx > 0 {
-		divisor *= math.Pow(1000, float64(idx))
+	factor, ok := mulPow1000(powU, idx)
+	if !ok {
+		return f.Format(a)
 	}
 
-	value := float64(absMinor) / divisor
-	rounded := math.Round(value*10) / 10
-	if rounded >= 1000 && idx < len(compactSuffixes)-1 {
-		rounded /= 1000
+	valueTimes10, ok := compactValueTimes10(absMinor, factor)
+	if !ok {
+		return f.Format(a)
+	}
+
+	if valueTimes10 >= 10000 && idx < len(compactSuffixes)-1 {
 		idx++
+		factor, ok = mulPow1000(powU, idx)
+		if !ok {
+			return f.Format(a)
+		}
+		valueTimes10, ok = compactValueTimes10(absMinor, factor)
+		if !ok {
+			return f.Format(a)
+		}
 	}
 
-	number := strconv.FormatFloat(rounded, 'f', 1, 64)
-	number = strings.TrimSuffix(strings.TrimSuffix(number, "0"), ".")
+	intPart := valueTimes10 / 10
+	fracDigit := valueTimes10 % 10
+	number := strconv.FormatUint(intPart, 10)
+	if fracDigit != 0 {
+		number += "." + strconv.FormatUint(fracDigit, 10)
+	}
 	number += compactSuffixes[idx]
 
 	formatted, _ := f.applyStyle(a, number)
@@ -488,6 +503,40 @@ func addGrouping(major string) string {
 	return b.String()
 }
 
+func mulPow1000(base uint64, exp int) (uint64, bool) {
+	value := base
+	for i := 0; i < exp; i++ {
+		if value > math.MaxUint64/1000 {
+			return 0, false
+		}
+		value *= 1000
+	}
+	return value, true
+}
+
+func compactValueTimes10(num uint64, den uint64) (uint64, bool) {
+	if den == 0 {
+		return 0, false
+	}
+	numBig := new(big.Int).SetUint64(num)
+	numBig.Mul(numBig, big.NewInt(10))
+
+	denBig := new(big.Int).SetUint64(den)
+	q := new(big.Int)
+	r := new(big.Int)
+	q.DivMod(numBig, denBig, r)
+
+	r.Mul(r, big.NewInt(2))
+	if r.Cmp(denBig) >= 0 {
+		q.Add(q, big.NewInt(1))
+	}
+
+	if !q.IsUint64() {
+		return 0, false
+	}
+	return q.Uint64(), true
+}
+
 func allDigits(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
@@ -510,7 +559,10 @@ func absInt64(v int64) uint64 {
 	if v >= 0 {
 		return uint64(v)
 	}
-	return uint64(-(v + 1) + 1)
+	if v == math.MinInt64 {
+		return uint64(1) << 63
+	}
+	return uint64(-v)
 }
 
 func checkedAdd(a, b int64) (int64, bool) {
