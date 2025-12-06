@@ -111,6 +111,10 @@ func FromMajorString(s string, c Currency) (Amount, error) {
 		return Amount{}, errors.New("denom: invalid major string")
 	}
 
+	if !hasDigit(s) {
+		return Amount{}, errors.New("denom: invalid major string")
+	}
+
 	if strings.Count(s, ".") > 1 {
 		return Amount{}, errors.New("denom: invalid major string")
 	}
@@ -204,20 +208,17 @@ func (a Amount) MinorInt() int64 {
 // currency scale.
 func (a Amount) MajorString() string {
 	pow := mustPow10(a.Currency.Scale)
-	minor := a.Minor
-	if minor < 0 {
-		minor = -minor
-	}
+	absMinor := absInt64(a.Minor)
 
 	if pow == 1 {
-		return strconv.FormatInt(minor, 10)
+		return strconv.FormatUint(absMinor, 10)
 	}
 
-	intPart := minor / pow
-	fracPart := minor % pow
+	intPart := absMinor / uint64(pow)
+	fracPart := absMinor % uint64(pow)
 	fracStr := fmt.Sprintf("%0*d", a.Currency.Scale, fracPart)
 
-	return strconv.FormatInt(intPart, 10) + "." + fracStr
+	return strconv.FormatUint(intPart, 10) + "." + fracStr
 }
 
 // MajorFloat returns a best-effort float64 representation.
@@ -310,6 +311,8 @@ type Formatter struct {
 	cfg FormatterConfig
 }
 
+var compactSuffixes = []string{"", "k", "M", "B", "T"}
+
 // NewFormatter creates a formatter from the given config.
 func NewFormatter(cfg FormatterConfig) Formatter {
 	return Formatter{cfg: cfg}
@@ -363,12 +366,37 @@ func (f Formatter) FormatCompact(a Amount) string {
 		return f.cfg.ZeroText
 	}
 
-	absMajor := math.Abs(a.MajorFloat())
-	if absMajor < 1000 {
+	pow := mustPow10(a.Currency.Scale)
+	absMinor := absInt64(a.Minor)
+	powU := uint64(pow)
+
+	majorInt := absMinor / powU
+	if majorInt < 1000 {
 		return f.Format(a)
 	}
 
-	number := compactNumber(absMajor)
+	idx := 0
+	for majorInt >= 1000 && idx < len(compactSuffixes)-1 {
+		majorInt /= 1000
+		idx++
+	}
+
+	divisor := float64(pow)
+	if idx > 0 {
+		divisor *= math.Pow(1000, float64(idx))
+	}
+
+	value := float64(absMinor) / divisor
+	rounded := math.Round(value*10) / 10
+	if rounded >= 1000 && idx < len(compactSuffixes)-1 {
+		rounded /= 1000
+		idx++
+	}
+
+	number := strconv.FormatFloat(rounded, 'f', 1, 64)
+	number = strings.TrimSuffix(strings.TrimSuffix(number, "0"), ".")
+	number += compactSuffixes[idx]
+
 	formatted, _ := f.applyStyle(a, number)
 	return formatted
 }
@@ -460,29 +488,6 @@ func addGrouping(major string) string {
 	return b.String()
 }
 
-func compactNumber(absMajor float64) string {
-	suffixes := []string{"", "k", "M", "B", "T"}
-	idx := 0
-	value := absMajor
-
-	for value >= 1000 && idx < len(suffixes)-1 {
-		value /= 1000
-		idx++
-	}
-
-	rounded := math.Round(value*10) / 10
-	for rounded >= 1000 && idx < len(suffixes)-1 {
-		value = rounded / 1000
-		idx++
-		rounded = math.Round(value*10) / 10
-	}
-
-	number := strconv.FormatFloat(rounded, 'f', 1, 64)
-	number = strings.TrimSuffix(strings.TrimSuffix(number, "0"), ".")
-
-	return number + suffixes[idx]
-}
-
 func allDigits(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
@@ -490,6 +495,22 @@ func allDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+func hasDigit(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+func absInt64(v int64) uint64 {
+	if v >= 0 {
+		return uint64(v)
+	}
+	return uint64(-(v + 1) + 1)
 }
 
 func checkedAdd(a, b int64) (int64, bool) {
@@ -509,6 +530,9 @@ func checkedSub(a, b int64) (int64, bool) {
 func checkedMul(a, b int64) (int64, bool) {
 	if a == 0 || b == 0 {
 		return 0, true
+	}
+	if (a == math.MinInt64 && b == -1) || (b == math.MinInt64 && a == -1) {
+		return 0, false
 	}
 	res := a * b
 	if res/b != a {

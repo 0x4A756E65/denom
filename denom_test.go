@@ -1,6 +1,7 @@
 package denom
 
 import (
+	"math"
 	"testing"
 )
 
@@ -19,6 +20,7 @@ func TestFromMajorString(t *testing.T) {
 		{"too many decimals", "1.234", USD, 0, true},
 		{"invalid chars", "1,234.56", USD, 0, true},
 		{"empty", "", USD, 0, true},
+		{"no digits", ".", USD, 0, true},
 	}
 
 	for _, tt := range tests {
@@ -89,6 +91,15 @@ func TestArithmetic(t *testing.T) {
 		}
 	}()
 	_ = a.Add(FromMinor(10, EUR))
+}
+
+func TestNegOverflow(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic on overflow")
+		}
+	}()
+	_ = FromMinor(math.MinInt64, USD).Neg()
 }
 
 func TestFormatterStandard(t *testing.T) {
