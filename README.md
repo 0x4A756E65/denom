@@ -47,10 +47,10 @@ fmt.Println(denom.USAccounting().Format(loss))      // "($123.45)"
 fmt.Println(denom.US().FormatCompact(loss.MulInt(10))) // "-$1.2k"
 ```
 
-Run the example program:
+Run the examples:
 
 ```bash
-go run ./examples/basic
+go run ./examples/demo   # single program with multiple scenarios
 ```
 
 ## Formatting Styles
