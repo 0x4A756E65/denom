@@ -7,7 +7,7 @@ Small, dependency-free helpers for representing money with integers and formatti
 ## Install
 
 ```bash
-go get github.com/0x4A756E65
+go get github.com/0x4A756E65/denom
 ```
 
 ## Core Ideas
